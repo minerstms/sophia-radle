@@ -2,14 +2,57 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>sophia-radle</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#7ec8f5">
+  <title>Frog Dash Universe — Sophia Radl</title>
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <main class="page">
-    <h1 class="title">sophia-radle — pink connected</h1>
-    <p class="text">This placeholder site is ready for a new project.</p>
-  </main>
+  <div id="app" class="app">
+    <header class="top-bar">
+      <p class="brand">Frog Dash Universe</p>
+      <p class="byline">Sophia Radl · First Game</p>
+    </header>
+
+    <section id="hud" class="hud" aria-live="polite">
+      <div class="hud-item">
+        <span class="hud-label">Level</span>
+        <span id="level-num" class="hud-value">1</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Score</span>
+        <span id="score-num" class="hud-value">0</span>
+      </div>
+      <div class="hud-item danger-slot">
+        <span class="hud-label">Escape</span>
+        <span id="escape-timer" class="hud-value escape-off">—</span>
+      </div>
+    </section>
+
+    <main id="pond" class="pond" aria-label="Game pond">
+      <canvas id="game-canvas" width="390" height="700"></canvas>
+      <div id="flash-layer" class="flash-layer" aria-hidden="true"></div>
+      <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
+    </main>
+
+    <section id="touch-hint" class="touch-hint">
+      Tap a lily pad to jump · Single flower = 1 second to escape!
+    </section>
+
+    <div id="overlay" class="overlay is-open">
+      <div class="overlay-card">
+        <h1 id="overlay-title" class="overlay-title">Frog Dash Universe</h1>
+        <p id="overlay-text" class="overlay-text">
+          Sophia Radl’s first game. Hop the green frog across glowing lily pads.
+          Pads with one flower are dangerous — jump off in 1 second or fall!
+        </p>
+        <button id="overlay-btn" class="overlay-btn" type="button">Play</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/game.js"></script>
 </body>
 </html>

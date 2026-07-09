@@ -12,9 +12,25 @@
 <body>
   <div id="app" class="app">
     <header class="top-bar">
-      <p class="brand">Frog Dash Universe</p>
-      <p class="byline">Sophia Radl · First Game</p>
+      <div class="top-row">
+        <div class="titles">
+          <p class="brand">Frog Dash Universe</p>
+          <p class="byline">Sophia Radl · First Game</p>
+        </div>
+        <button id="help-btn" class="help-btn" type="button" aria-label="How to play">How to Play</button>
+      </div>
     </header>
+
+    <section id="start-panel" class="start-panel">
+      <p class="start-lead">Tap Play, then tap lily pads to hop your frog to the golden finish.</p>
+      <ul class="start-list">
+        <li><strong>Green lily pads</strong> are safe — stay as long as you want.</li>
+        <li><strong>Floating flowers</strong> (no pad) are danger — jump off in <strong>1.5 seconds</strong> or fall!</li>
+        <li>Only tap nearby pads or flowers. No keyboard needed.</li>
+      </ul>
+      <button id="start-btn" class="start-btn" type="button">Play</button>
+      <p class="scroll-cue">Scroll down to see the pond ↓</p>
+    </section>
 
     <section id="hud" class="hud" aria-live="polite">
       <div class="hud-item">
@@ -38,17 +54,19 @@
     </main>
 
     <section id="touch-hint" class="touch-hint">
-      Tap a lily pad to jump · Single flower = 1 second to escape!
+      Tap a lily pad or flower to jump · Floating flower = 1.5s to escape!
     </section>
 
-    <div id="overlay" class="overlay is-open">
+    <div id="overlay" class="overlay">
       <div class="overlay-card">
-        <h1 id="overlay-title" class="overlay-title">Frog Dash Universe</h1>
-        <p id="overlay-text" class="overlay-text">
-          Sophia Radl’s first game. Hop the green frog across glowing lily pads.
-          Pads with one flower are dangerous — jump off in 1 second or fall!
-        </p>
-        <button id="overlay-btn" class="overlay-btn" type="button">Play</button>
+        <h1 id="overlay-title" class="overlay-title">How to Play</h1>
+        <div id="overlay-text" class="overlay-text">
+          <p>Tap lily pads to hop the green frog upward to the golden finish pad.</p>
+          <p><strong>Safe:</strong> green lily pads with flowers on them.</p>
+          <p><strong>Danger:</strong> a flower floating alone (no lily pad). You only have <strong>1.5 seconds</strong> — tap another pad fast!</p>
+          <p>Works with finger taps only. No space bar. No keyboard.</p>
+        </div>
+        <button id="overlay-btn" class="overlay-btn" type="button">Got it</button>
       </div>
     </div>
   </div>

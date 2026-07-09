@@ -18,7 +18,7 @@
   const confettiLayer = document.getElementById("confetti-layer");
   const pond = document.getElementById("pond");
 
-  const BUILD_ID = "FDU-0709G";
+  const BUILD_ID = "FDU-0709H";
   const DANGER_SECONDS = 0.45;
   const MAX_LEVEL = 30;
   console.info("[Frog Dash Universe]", BUILD_ID, {

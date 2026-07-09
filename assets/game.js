@@ -18,7 +18,15 @@
   const confettiLayer = document.getElementById("confetti-layer");
   const pond = document.getElementById("pond");
 
-  const DANGER_SECONDS = 1.5;
+  const BUILD_ID = "FDU-0709D";
+  const DANGER_SECONDS = 45;
+  const MAX_LEVEL = 30;
+  console.info("[Frog Dash Universe]", BUILD_ID, {
+    dangerSeconds: DANGER_SECONDS,
+    maxLevel: MAX_LEVEL,
+    noSkip: true,
+    overlayConfetti: true,
+  });
   const FLOWER_COLORS = ["#ff6bb5", "#ffd700", "#ff9f43", "#a55eea", "#ff4757", "#7dffb0", "#ff8fab"];
   const NOTE = {
     C4: 261.63,
@@ -38,10 +46,11 @@
   };
 
   const HELP_HTML =
-    "<p>Tap lily pads to hop the green frog upward to the golden finish pad.</p>" +
+    "<p>Tap the <strong>next</strong> lily pad to hop the green frog up to the golden finish.</p>" +
     "<p><strong>Safe:</strong> green lily pads with flowers on them.</p>" +
-    "<p><strong>Danger:</strong> a flower floating alone (no lily pad). You only have <strong>1.5 seconds</strong> — tap another pad fast!</p>" +
-    "<p>Works with finger taps only. No space bar. No keyboard.</p>";
+    "<p><strong>Danger:</strong> a flower floating alone (no lily pad). You have <strong>45 seconds</strong> to jump off!</p>" +
+    "<p>No skipping pads or flowers — hop one at a time. Finger taps only.</p>" +
+    "<p>There are <strong>30 levels</strong>. Each one is longer and harder.</p>";
 
   const state = {
     mode: "ready",
@@ -58,6 +67,8 @@
     audio: null,
     viewW: 0,
     viewH: 0,
+    worldH: 0,
+    cameraY: 0,
     overlayKind: "help",
   };
 
@@ -176,21 +187,25 @@
     }, 140);
   }
 
+  function clearConfetti() {
+    if (confettiLayer) confettiLayer.innerHTML = "";
+  }
+
   function spawnConfetti() {
+    if (!confettiLayer) return;
     confettiLayer.innerHTML = "";
-    for (let i = 0; i < 48; i++) {
+    for (let i = 0; i < 56; i++) {
       const piece = document.createElement("div");
       piece.className = "confetti-piece";
       piece.style.left = `${Math.random() * 100}%`;
       piece.style.background = FLOWER_COLORS[i % FLOWER_COLORS.length];
       piece.style.color = FLOWER_COLORS[i % FLOWER_COLORS.length];
-      piece.style.animationDuration = `${1.4 + Math.random() * 1.6}s`;
-      piece.style.animationDelay = `${Math.random() * 0.4}s`;
+      piece.style.animationDuration = `${1.5 + Math.random() * 1.8}s`;
+      piece.style.animationDelay = `${Math.random() * 0.35}s`;
       confettiLayer.appendChild(piece);
     }
-    setTimeout(() => {
-      confettiLayer.innerHTML = "";
-    }, 3200);
+    clearTimeout(spawnConfetti._t);
+    spawnConfetti._t = setTimeout(clearConfetti, 3600);
   }
 
   function rand(a, b) {
@@ -202,10 +217,12 @@
   }
 
   function levelConfig(level) {
-    const padCount = Math.min(5 + level, 11);
-    const dangerChance = Math.min(0.2 + level * 0.07, 0.58);
-    const sway = Math.min(0.35 + level * 0.08, 1.35);
-    return { padCount, dangerChance, sway };
+    const clamped = Math.max(1, Math.min(MAX_LEVEL, level));
+    const padCount = 8 + clamped * 2;
+    const dangerChance = Math.min(0.18 + clamped * 0.018, 0.55);
+    const sway = Math.min(0.4 + clamped * 0.04, 1.5);
+    const spacing = Math.max(78, 118 - clamped * 0.9);
+    return { padCount, dangerChance, sway, spacing };
   }
 
   function makeDecorFlower(color) {
@@ -223,15 +240,14 @@
     const cfg = levelConfig(level);
     const pads = [];
     const marginX = 48;
-    const topY = 78;
-    const bottomY = state.viewH - 100;
-    const span = bottomY - topY;
+    const bottomPadY = state.viewH - 100;
+    const topPadY = bottomPadY - (cfg.padCount - 1) * cfg.spacing;
+    state.worldH = Math.max(state.viewH, bottomPadY + 120 - topPadY + 160);
 
     for (let i = 0; i < cfg.padCount; i++) {
-      const t = i / (cfg.padCount - 1);
-      const y = bottomY - t * span;
-      const zig = (i % 2 === 0 ? -1 : 1) * rand(24, 78);
-      const x = state.viewW / 2 + zig * (0.55 + Math.min(level, 8) * 0.05);
+      const y = bottomPadY - i * cfg.spacing;
+      const zig = (i % 2 === 0 ? -1 : 1) * rand(28, 86);
+      const x = state.viewW / 2 + zig * (0.55 + Math.min(level, 20) * 0.03);
       const clampedX = Math.max(marginX, Math.min(state.viewW - marginX, x));
       const isGoal = i === cfg.padCount - 1;
       const isStart = i === 0;
@@ -272,6 +288,7 @@
 
     state.pads = pads;
     state.goalPadIndex = pads.length - 1;
+    state.cameraY = 0;
     state.frog = {
       padIndex: 0,
       x: pads[0].x,
@@ -286,12 +303,20 @@
     updateHud();
   }
 
+  function updateCamera() {
+    if (!state.frog) return;
+    const target = state.frog.y - state.viewH * 0.62;
+    const maxCam = Math.max(0, state.worldH - state.viewH);
+    const desired = Math.max(0, Math.min(maxCam, target));
+    state.cameraY += (desired - state.cameraY) * 0.12;
+  }
+
   function updateHud() {
-    levelEl.textContent = String(state.level);
+    levelEl.textContent = `${state.level}/${MAX_LEVEL}`;
     scoreEl.textContent = String(state.score);
     if (state.onDangerPad && state.mode === "play") {
       const left = Math.max(0, state.escapeUntil - performance.now()) / 1000;
-      escapeEl.textContent = left.toFixed(2) + "s";
+      escapeEl.textContent = left.toFixed(1) + "s";
       escapeEl.classList.remove("escape-off");
       dangerSlot.classList.add("is-hot");
     } else {
@@ -306,11 +331,13 @@
     overlayText.innerHTML = html;
     overlayBtn.textContent = btnLabel;
     state.overlayKind = kind || "help";
+    if (kind !== "win") clearConfetti();
     overlay.classList.add("is-open");
   }
 
   function hideOverlay() {
     overlay.classList.remove("is-open");
+    clearConfetti();
   }
 
   function landOnPad(index) {
@@ -349,8 +376,7 @@
   function startJump(targetIndex) {
     if (state.mode !== "play" || state.jump || state.falling) return;
     const from = state.frog.padIndex;
-    if (targetIndex === from) return;
-    if (Math.abs(targetIndex - from) > 2) return;
+    if (targetIndex !== from + 1) return;
 
     const start = state.pads[from];
     const end = state.pads[targetIndex];
@@ -358,7 +384,7 @@
       from,
       to: targetIndex,
       t0: performance.now(),
-      dur: 300 + Math.abs(targetIndex - from) * 45,
+      dur: 340,
       x0: start.x,
       y0: start.y - 22,
       x1: end.x,
@@ -397,15 +423,25 @@
     state.onDangerPad = false;
     state.score += 20 + state.level * 10;
     updateHud();
-    spawnConfetti();
     playWinSong();
     flash("jackpot");
-    showOverlay(
-      "Congratulations!",
-      `<p>You finished level <strong>${state.level}</strong>!</p><p>Confetti time — next level gets harder.</p>`,
-      `Play Level ${state.level + 1}`,
-      "win"
-    );
+
+    if (state.level >= MAX_LEVEL) {
+      showOverlay(
+        "You Win!",
+        `<p>Congratulations! You finished all <strong>${MAX_LEVEL} levels</strong>!</p><p>Final score: <strong>${state.score}</strong></p>`,
+        "Play Again",
+        "win-final"
+      );
+    } else {
+      showOverlay(
+        "Congratulations!",
+        `<p>You finished level <strong>${state.level}</strong>!</p><p>Next level is longer and harder.</p>`,
+        `Play Level ${state.level + 1}`,
+        "win"
+      );
+    }
+    spawnConfetti();
   }
 
   function startGame(resetScore) {
@@ -424,6 +460,10 @@
   }
 
   function nextLevel() {
+    if (state.level >= MAX_LEVEL) {
+      startGame(true);
+      return;
+    }
     state.level += 1;
     startGame(false);
   }
@@ -438,8 +478,8 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
 
-    for (let i = 0; i < 6; i++) {
-      const y = ((t * 20 + i * 90) % (h + 40)) - 20;
+    for (let i = 0; i < 8; i++) {
+      const y = ((t * 20 + i * 90 + state.cameraY * 0.3) % (h + 40)) - 20;
       ctx.beginPath();
       ctx.moveTo(0, y);
       for (let x = 0; x <= w; x += 20) {
@@ -535,6 +575,8 @@
     const y = pad.y + bob;
     const glow = 0.5 + 0.5 * Math.sin(t * 3 + pad.glowPhase);
 
+    if (y < state.cameraY - 80 || y > state.cameraY + state.viewH + 80) return;
+
     if (pad.dangerous) {
       ctx.save();
       ctx.shadowColor = "#ff4757";
@@ -545,7 +587,7 @@
       ctx.fillStyle = `rgba(255, 71, 87, ${0.55 + glow * 0.35})`;
       ctx.font = "bold 13px Trebuchet MS, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("1.5s!", x, y + 28);
+      ctx.fillText("45s!", x, y + 28);
       return;
     }
 
@@ -617,6 +659,22 @@
     ctx.restore();
   }
 
+  function drawNextHint(t) {
+    if (state.mode !== "play" || !state.frog || state.jump) return;
+    const next = state.pads[state.frog.padIndex + 1];
+    if (!next) return;
+    const bob = Math.sin(t * 2.2 + next.bobPhase) * 3;
+    const pulse = 0.55 + 0.45 * Math.sin(t * 6);
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 215, 0, ${pulse})`;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(next.x, next.y + bob, next.r + 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawFrog(t) {
     const frog = state.frog;
     if (!frog) return;
@@ -637,6 +695,8 @@
       squash = 1 - Math.sin(Math.PI * p) * 0.12;
       tilt = (state.jump.x1 - state.jump.x0) * 0.004;
       frog.leg = Math.sin(p * Math.PI * 2) * 0.5;
+      frog.x = x;
+      frog.y = y;
     } else if (state.falling) {
       const p = (performance.now() - state.falling.t0) / 700;
       x = state.falling.x + Math.sin(p * 20) * 8;
@@ -644,6 +704,8 @@
       stretch = 1.25;
       squash = 0.65;
       tilt = p * 1.2;
+      frog.x = x;
+      frog.y = y;
     } else {
       const pad = state.pads[frog.padIndex];
       if (pad) {
@@ -667,20 +729,17 @@
     ctx.shadowColor = "#7dffb0";
     ctx.shadowBlur = 18 + Math.sin(t * 7) * 6;
 
-    // back legs
     ctx.fillStyle = "#148a3f";
     ctx.beginPath();
     ctx.ellipse(-20, 16, 12, 7, -0.55 + frog.leg, 0, Math.PI * 2);
     ctx.ellipse(20, 16, 12, 7, 0.55 - frog.leg, 0, Math.PI * 2);
     ctx.fill();
 
-    // feet
     ctx.beginPath();
     ctx.ellipse(-28, 20, 8, 4, -0.2, 0, Math.PI * 2);
     ctx.ellipse(28, 20, 8, 4, 0.2, 0, Math.PI * 2);
     ctx.fill();
 
-    // body
     ctx.beginPath();
     ctx.ellipse(0, 6, 24, 18, 0, 0, Math.PI * 2);
     const body = ctx.createRadialGradient(-6, -2, 3, 0, 6, 24);
@@ -690,33 +749,28 @@
     ctx.fillStyle = body;
     ctx.fill();
 
-    // belly
     ctx.beginPath();
     ctx.ellipse(0, 10, 14, 10, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#d8ffe8";
     ctx.fill();
 
-    // front arms
     ctx.fillStyle = "#1e9e4f";
     ctx.beginPath();
     ctx.ellipse(-16, 12, 7, 4, 0.5, 0, Math.PI * 2);
     ctx.ellipse(16, 12, 7, 4, -0.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // head
     ctx.beginPath();
     ctx.ellipse(0, -10, 16, 13, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#2ecc71";
     ctx.fill();
 
-    // eye bumps
     ctx.beginPath();
     ctx.arc(-9, -20, 8, 0, Math.PI * 2);
     ctx.arc(9, -20, 8, 0, Math.PI * 2);
     ctx.fillStyle = "#2ecc71";
     ctx.fill();
 
-    // eye whites
     ctx.fillStyle = "#fff8e7";
     ctx.beginPath();
     ctx.arc(-9, -21, 4.5, 0, Math.PI * 2);
@@ -745,14 +799,12 @@
       ctx.stroke();
     }
 
-    // smile
     ctx.strokeStyle = "#148a3f";
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.arc(0, -6, 6, 0.2, Math.PI - 0.2);
     ctx.stroke();
 
-    // cheek shine flicker
     if (Math.floor(t * 6) % 2 === 0) {
       ctx.fillStyle = "rgba(255,255,255,0.4)";
       ctx.beginPath();
@@ -786,14 +838,14 @@
   function hitTestPad(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * state.viewW;
-    const y = ((clientY - rect.top) / rect.height) * state.viewH;
+    const y = ((clientY - rect.top) / rect.height) * state.viewH + state.cameraY;
     let best = -1;
-    let bestDist = 56;
+    let bestDist = 64;
     state.pads.forEach((pad, i) => {
       const dx = pad.x - x;
       const dy = pad.y - y;
       const d = Math.hypot(dx, dy);
-      const reach = pad.dangerous ? 52 : pad.r + 18;
+      const reach = pad.dangerous ? 56 : pad.r + 22;
       if (d < reach && d < bestDist) {
         bestDist = d;
         best = i;
@@ -818,10 +870,15 @@
     updatePads(t);
     updateJump();
     updateDanger();
+    updateCamera();
 
     drawWater(t);
+    ctx.save();
+    ctx.translate(0, -state.cameraY);
     state.pads.forEach((pad) => drawPad(pad, t));
+    drawNextHint(t);
     if (state.frog) drawFrog(t);
+    ctx.restore();
 
     requestAnimationFrame(frame);
   }
@@ -846,6 +903,8 @@
     resumeAudio();
     if (state.overlayKind === "win") {
       nextLevel();
+    } else if (state.overlayKind === "win-final") {
+      startGame(true);
     } else if (state.overlayKind === "dead") {
       startGame(true);
     } else {

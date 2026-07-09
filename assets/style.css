@@ -105,6 +105,31 @@ body {
   text-shadow: 0 1px 4px rgba(13, 58, 92, 0.4);
 }
 
+.sophia-pink {
+  color: #ff69b4;
+  font-weight: 800;
+  text-shadow:
+    0 0 10px rgba(255, 105, 180, 0.95),
+    0 1px 2px rgba(13, 58, 92, 0.45);
+}
+
+.build-stamp {
+  margin: 0.35rem 0 0;
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: clamp(0.62rem, 2.8vw, 0.72rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #5a1030;
+  background: #ff69b4;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 14px rgba(255, 105, 180, 0.75);
+  word-break: break-word;
+}
+
 .help-btn {
   appearance: none;
   flex-shrink: 0;
@@ -338,14 +363,6 @@ body {
   background: radial-gradient(circle, rgba(255, 71, 87, 0.7), transparent 65%);
 }
 
-.confetti-layer {
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  z-index: 3;
-}
-
 .confetti-piece {
   position: absolute;
   top: -12px;
@@ -362,7 +379,7 @@ body {
     opacity: 1;
   }
   100% {
-    transform: translateY(110vh) rotate(720deg);
+    transform: translateY(120%) rotate(720deg);
     opacity: 0.85;
   }
 }
@@ -412,10 +429,10 @@ body {
 }
 
 .overlay-card {
+  position: relative;
   width: min(100%, 22rem);
   max-height: min(85dvh, 640px);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   padding: 1.35rem 1.15rem;
   border-radius: 1.15rem;
   text-align: center;
@@ -428,6 +445,28 @@ body {
     0 0 40px rgba(255, 215, 0, 0.55),
     0 0 80px rgba(255, 107, 181, 0.35);
   animation: card-glow 1.8s ease-in-out infinite;
+}
+
+.overlay-card .overlay-title,
+.overlay-card .overlay-text,
+.overlay-card .overlay-btn {
+  position: relative;
+  z-index: 2;
+}
+
+.overlay-text {
+  max-height: min(42dvh, 280px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.confetti-layer {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 1;
+  border-radius: inherit;
 }
 
 @keyframes card-glow {

@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-build="FDU-0709D">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#7ec8f5">
-  <title>Frog Dash Universe — Sophia Radl</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <meta name="fdu-build" content="FDU-0709D">
+  <title>Frog Dash Universe — Sophia Radl · FDU-0709D</title>
+  <link rel="stylesheet" href="assets/style.css?v=FDU-0709D">
 </head>
 <body>
   <div id="app" class="app">
@@ -15,18 +16,19 @@
       <div class="top-row">
         <div class="titles">
           <p class="brand">Frog Dash Universe</p>
-          <p class="byline">Sophia Radl · First Game</p>
+          <p class="byline"><span class="sophia-pink">Sophia Radl</span> · First Game</p>
+          <p id="build-stamp" class="build-stamp" title="Deploy identifier for debugging">BUILD FDU-0709D · 45s danger · 30 levels · no-skip · overlay confetti</p>
         </div>
         <button id="help-btn" class="help-btn" type="button" aria-label="How to play">How to Play</button>
       </div>
     </header>
 
     <section id="start-panel" class="start-panel">
-      <p class="start-lead">Tap Play, then tap lily pads to hop your frog to the golden finish.</p>
+      <p class="start-lead">Tap Play, then tap the next lily pad or flower to hop your frog to the finish. 30 levels!</p>
       <ul class="start-list">
         <li><strong>Green lily pads</strong> are safe — stay as long as you want.</li>
-        <li><strong>Floating flowers</strong> (no pad) are danger — jump off in <strong>1.5 seconds</strong> or fall!</li>
-        <li>Only tap nearby pads or flowers. No keyboard needed.</li>
+        <li><strong>Floating flowers</strong> (no pad) are danger — jump off within <strong>45 seconds</strong> or fall!</li>
+        <li>You must hop in order — no skipping. Finger taps only.</li>
       </ul>
       <button id="start-btn" class="start-btn" type="button">Play</button>
       <p class="scroll-cue">Scroll down to see the pond ↓</p>
@@ -35,7 +37,7 @@
     <section id="hud" class="hud" aria-live="polite">
       <div class="hud-item">
         <span class="hud-label">Level</span>
-        <span id="level-num" class="hud-value">1</span>
+        <span id="level-num" class="hud-value">1/30</span>
       </div>
       <div class="hud-item">
         <span class="hud-label">Score</span>
@@ -50,27 +52,28 @@
     <main id="pond" class="pond" aria-label="Game pond">
       <canvas id="game-canvas" width="390" height="700"></canvas>
       <div id="flash-layer" class="flash-layer" aria-hidden="true"></div>
-      <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
     </main>
 
     <section id="touch-hint" class="touch-hint">
-      Tap a lily pad or flower to jump · Floating flower = 1.5s to escape!
+      Tap the next pad or flower · Floating flower = 45s to escape · 30 levels
     </section>
 
     <div id="overlay" class="overlay">
       <div class="overlay-card">
+        <div id="confetti-layer" class="confetti-layer" aria-hidden="true"></div>
         <h1 id="overlay-title" class="overlay-title">How to Play</h1>
         <div id="overlay-text" class="overlay-text">
-          <p>Tap lily pads to hop the green frog upward to the golden finish pad.</p>
+          <p>Tap the next lily pad to hop the green frog up to the golden finish.</p>
           <p><strong>Safe:</strong> green lily pads with flowers on them.</p>
-          <p><strong>Danger:</strong> a flower floating alone (no lily pad). You only have <strong>1.5 seconds</strong> — tap another pad fast!</p>
-          <p>Works with finger taps only. No space bar. No keyboard.</p>
+          <p><strong>Danger:</strong> a flower floating alone (no lily pad). You have <strong>45 seconds</strong> to jump off!</p>
+          <p>No skipping pads. Finger taps only — no keyboard.</p>
+          <p>There are <strong>30 levels</strong>. Each one is longer and harder.</p>
         </div>
         <button id="overlay-btn" class="overlay-btn" type="button">Got it</button>
       </div>
     </div>
   </div>
 
-  <script src="assets/game.js"></script>
+  <script src="assets/game.js?v=FDU-0709D"></script>
 </body>
 </html>

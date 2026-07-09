@@ -18,13 +18,14 @@
   const confettiLayer = document.getElementById("confetti-layer");
   const pond = document.getElementById("pond");
 
-  const BUILD_ID = "FDU-0709D";
-  const DANGER_SECONDS = 45;
+  const BUILD_ID = "FDU-0709G";
+  const DANGER_SECONDS = 0.45;
   const MAX_LEVEL = 30;
   console.info("[Frog Dash Universe]", BUILD_ID, {
     dangerSeconds: DANGER_SECONDS,
     maxLevel: MAX_LEVEL,
     noSkip: true,
+    frogPinnedToScreenCenter: true,
     overlayConfetti: true,
   });
   const FLOWER_COLORS = ["#ff6bb5", "#ffd700", "#ff9f43", "#a55eea", "#ff4757", "#7dffb0", "#ff8fab"];
@@ -48,7 +49,7 @@
   const HELP_HTML =
     "<p>Tap the <strong>next</strong> lily pad to hop the green frog up to the golden finish.</p>" +
     "<p><strong>Safe:</strong> green lily pads with flowers on them.</p>" +
-    "<p><strong>Danger:</strong> a flower floating alone (no lily pad). You have <strong>45 seconds</strong> to jump off!</p>" +
+    "<p><strong>Danger:</strong> a flower floating alone (no lily pad). You have <strong>0.45 seconds</strong> to jump off!</p>" +
     "<p>No skipping pads or flowers — hop one at a time. Finger taps only.</p>" +
     "<p>There are <strong>30 levels</strong>. Each one is longer and harder.</p>";
 
@@ -68,6 +69,7 @@
     viewW: 0,
     viewH: 0,
     worldH: 0,
+    cameraX: 0,
     cameraY: 0,
     overlayKind: "help",
   };
@@ -242,7 +244,7 @@
     const marginX = 48;
     const bottomPadY = state.viewH - 100;
     const topPadY = bottomPadY - (cfg.padCount - 1) * cfg.spacing;
-    state.worldH = Math.max(state.viewH, bottomPadY + 120 - topPadY + 160);
+    state.worldH = bottomPadY + 140 - (topPadY - 120);
 
     for (let i = 0; i < cfg.padCount; i++) {
       const y = bottomPadY - i * cfg.spacing;
@@ -288,7 +290,6 @@
 
     state.pads = pads;
     state.goalPadIndex = pads.length - 1;
-    state.cameraY = 0;
     state.frog = {
       padIndex: 0,
       x: pads[0].x,
@@ -296,6 +297,9 @@
       hop: 0,
       leg: 0,
     };
+    // Lock camera so the frog starts (and stays) in the screen center.
+    state.cameraX = state.frog.x - state.viewW * 0.5;
+    state.cameraY = state.frog.y - state.viewH * 0.5;
     state.jump = null;
     state.falling = null;
     state.escapeUntil = 0;
@@ -305,10 +309,17 @@
 
   function updateCamera() {
     if (!state.frog) return;
-    const target = state.frog.y - state.viewH * 0.62;
-    const maxCam = Math.max(0, state.worldH - state.viewH);
-    const desired = Math.max(0, Math.min(maxCam, target));
-    state.cameraY += (desired - state.cameraY) * 0.12;
+    // Camera is locked to the frog: frog world pos maps to exact screen center.
+    state.cameraX = state.frog.x - state.viewW * 0.5;
+    state.cameraY = state.frog.y - state.viewH * 0.5;
+  }
+
+  function screenCenterX() {
+    return state.viewW * 0.5;
+  }
+
+  function screenCenterY() {
+    return state.viewH * 0.5;
   }
 
   function updateHud() {
@@ -316,7 +327,7 @@
     scoreEl.textContent = String(state.score);
     if (state.onDangerPad && state.mode === "play") {
       const left = Math.max(0, state.escapeUntil - performance.now()) / 1000;
-      escapeEl.textContent = left.toFixed(1) + "s";
+      escapeEl.textContent = left.toFixed(2) + "s";
       escapeEl.classList.remove("escape-off");
       dangerSlot.classList.add("is-hot");
     } else {
@@ -575,7 +586,14 @@
     const y = pad.y + bob;
     const glow = 0.5 + 0.5 * Math.sin(t * 3 + pad.glowPhase);
 
-    if (y < state.cameraY - 80 || y > state.cameraY + state.viewH + 80) return;
+    if (
+      y < state.cameraY - 100 ||
+      y > state.cameraY + state.viewH + 100 ||
+      x < state.cameraX - 100 ||
+      x > state.cameraX + state.viewW + 100
+    ) {
+      return;
+    }
 
     if (pad.dangerous) {
       ctx.save();
@@ -587,7 +605,7 @@
       ctx.fillStyle = `rgba(255, 71, 87, ${0.55 + glow * 0.35})`;
       ctx.font = "bold 13px Trebuchet MS, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("45s!", x, y + 28);
+      ctx.fillText("0.45s!", x, y + 28);
       return;
     }
 
@@ -675,49 +693,64 @@
     ctx.restore();
   }
 
+  function updateFrogMotion(t) {
+    const frog = state.frog;
+    if (!frog) return;
+
+    if (state.jump) {
+      const p = Math.min(1, (performance.now() - state.jump.t0) / state.jump.dur);
+      const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const arc = Math.sin(Math.PI * p) * 48;
+      frog.x = state.jump.x0 + (state.jump.x1 - state.jump.x0) * ease;
+      frog.y = state.jump.y0 + (state.jump.y1 - state.jump.y0) * ease - arc;
+      frog.leg = Math.sin(p * Math.PI * 2) * 0.5;
+      return;
+    }
+
+    if (state.falling) {
+      const p = (performance.now() - state.falling.t0) / 700;
+      frog.x = state.falling.x + Math.sin(p * 20) * 8;
+      frog.y = state.falling.y + p * p * 240;
+      return;
+    }
+
+    const pad = state.pads[frog.padIndex];
+    if (pad) {
+      const bob = Math.sin(t * 2.2 + pad.bobPhase) * 3;
+      frog.x = pad.x;
+      frog.y = pad.y + bob - 22;
+    }
+    frog.hop = Math.sin(t * 4.5) * 2.5;
+    frog.leg = Math.sin(t * 5) * 0.18;
+  }
+
   function drawFrog(t) {
     const frog = state.frog;
     if (!frog) return;
 
-    let x = frog.x;
-    let y = frog.y;
+    // IMPORTANT: frog is drawn in SCREEN SPACE at the exact center.
+    // The world/pads scroll underneath via camera translate.
+    let x = screenCenterX();
+    let y = screenCenterY();
     let squash = 1;
     let stretch = 1;
     let tilt = 0;
 
     if (state.jump) {
       const p = Math.min(1, (performance.now() - state.jump.t0) / state.jump.dur);
-      const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-      x = state.jump.x0 + (state.jump.x1 - state.jump.x0) * ease;
-      const arc = Math.sin(Math.PI * p) * 78;
-      y = state.jump.y0 + (state.jump.y1 - state.jump.y0) * ease - arc;
       stretch = 1 + Math.sin(Math.PI * p) * 0.28;
       squash = 1 - Math.sin(Math.PI * p) * 0.12;
       tilt = (state.jump.x1 - state.jump.x0) * 0.004;
-      frog.leg = Math.sin(p * Math.PI * 2) * 0.5;
-      frog.x = x;
-      frog.y = y;
+      // Tiny hop feel without leaving center
+      y -= Math.sin(Math.PI * p) * 10;
     } else if (state.falling) {
       const p = (performance.now() - state.falling.t0) / 700;
-      x = state.falling.x + Math.sin(p * 20) * 8;
-      y = state.falling.y + p * p * 240;
       stretch = 1.25;
       squash = 0.65;
       tilt = p * 1.2;
-      frog.x = x;
-      frog.y = y;
+      y += p * p * 40;
     } else {
-      const pad = state.pads[frog.padIndex];
-      if (pad) {
-        const bob = Math.sin(t * 2.2 + pad.bobPhase) * 3;
-        x = pad.x;
-        y = pad.y + bob - 22;
-        frog.x = x;
-        frog.y = y;
-      }
-      frog.hop = Math.sin(t * 4.5) * 2.5;
-      y += frog.hop;
-      frog.leg = Math.sin(t * 5) * 0.18;
+      y += (frog.hop || 0);
     }
 
     const blink = Math.sin(t * 2.8) > 0.93;
@@ -837,7 +870,7 @@
 
   function hitTestPad(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * state.viewW;
+    const x = ((clientX - rect.left) / rect.width) * state.viewW + state.cameraX;
     const y = ((clientY - rect.top) / rect.height) * state.viewH + state.cameraY;
     let best = -1;
     let bestDist = 64;
@@ -870,15 +903,18 @@
     updatePads(t);
     updateJump();
     updateDanger();
+    updateFrogMotion(t);
     updateCamera();
 
     drawWater(t);
+    // World scrolls under the frog
     ctx.save();
-    ctx.translate(0, -state.cameraY);
+    ctx.translate(-state.cameraX, -state.cameraY);
     state.pads.forEach((pad) => drawPad(pad, t));
     drawNextHint(t);
-    if (state.frog) drawFrog(t);
     ctx.restore();
+    // Frog is pinned to screen center (never leaves the frame)
+    if (state.frog) drawFrog(t);
 
     requestAnimationFrame(frame);
   }

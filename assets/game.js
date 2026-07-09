@@ -7,6 +7,9 @@
   const overlayTitle = document.getElementById("overlay-title");
   const overlayText = document.getElementById("overlay-text");
   const overlayBtn = document.getElementById("overlay-btn");
+  const helpBtn = document.getElementById("help-btn");
+  const startBtn = document.getElementById("start-btn");
+  const startPanel = document.getElementById("start-panel");
   const levelEl = document.getElementById("level-num");
   const scoreEl = document.getElementById("score-num");
   const escapeEl = document.getElementById("escape-timer");
@@ -15,7 +18,8 @@
   const confettiLayer = document.getElementById("confetti-layer");
   const pond = document.getElementById("pond");
 
-  const FLOWER_COLORS = ["#ff6bb5", "#ffd700", "#ff9f43", "#a55eea", "#ff4757", "#7dffb0", "#fff8e7"];
+  const DANGER_SECONDS = 1.5;
+  const FLOWER_COLORS = ["#ff6bb5", "#ffd700", "#ff9f43", "#a55eea", "#ff4757", "#7dffb0", "#ff8fab"];
   const NOTE = {
     C4: 261.63,
     D4: 293.66,
@@ -33,8 +37,14 @@
     C6: 1046.5,
   };
 
+  const HELP_HTML =
+    "<p>Tap lily pads to hop the green frog upward to the golden finish pad.</p>" +
+    "<p><strong>Safe:</strong> green lily pads with flowers on them.</p>" +
+    "<p><strong>Danger:</strong> a flower floating alone (no lily pad). You only have <strong>1.5 seconds</strong> — tap another pad fast!</p>" +
+    "<p>Works with finger taps only. No space bar. No keyboard.</p>";
+
   const state = {
-    mode: "title",
+    mode: "ready",
     level: 1,
     score: 0,
     pads: [],
@@ -42,12 +52,13 @@
     escapeUntil: 0,
     onDangerPad: false,
     anim: 0,
-    lastTs: 0,
     jump: null,
     falling: null,
     goalPadIndex: 0,
     audio: null,
-    confettiBusy: false,
+    viewW: 0,
+    viewH: 0,
+    overlayKind: "help",
   };
 
   function resizeCanvas() {
@@ -70,6 +81,12 @@
     if (!AC) return null;
     state.audio = new AC();
     return state.audio;
+  }
+
+  function resumeAudio() {
+    const ac = ensureAudio();
+    if (ac && ac.state === "suspended") ac.resume();
+    return ac;
   }
 
   function tone(freq, dur, type, gain, when) {
@@ -126,7 +143,6 @@
     cascade.forEach((f, i) => {
       tone(f, 0.14, i % 2 ? "triangle" : "square", 0.11, i * 0.08);
     });
-    setTimeout(() => chime([NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6], 0.09), 700);
   }
 
   function playWinSong() {
@@ -162,22 +178,18 @@
 
   function spawnConfetti() {
     confettiLayer.innerHTML = "";
-    const colors = FLOWER_COLORS;
     for (let i = 0; i < 48; i++) {
       const piece = document.createElement("div");
       piece.className = "confetti-piece";
       piece.style.left = `${Math.random() * 100}%`;
-      piece.style.background = colors[i % colors.length];
-      piece.style.color = colors[i % colors.length];
+      piece.style.background = FLOWER_COLORS[i % FLOWER_COLORS.length];
+      piece.style.color = FLOWER_COLORS[i % FLOWER_COLORS.length];
       piece.style.animationDuration = `${1.4 + Math.random() * 1.6}s`;
       piece.style.animationDelay = `${Math.random() * 0.4}s`;
-      piece.style.transform = `rotate(${Math.random() * 360}deg)`;
       confettiLayer.appendChild(piece);
     }
-    state.confettiBusy = true;
     setTimeout(() => {
       confettiLayer.innerHTML = "";
-      state.confettiBusy = false;
     }, 3200);
   }
 
@@ -190,61 +202,71 @@
   }
 
   function levelConfig(level) {
-    const padCount = Math.min(5 + level, 12);
-    const singleChance = Math.min(0.18 + level * 0.06, 0.62);
-    const sway = Math.min(0.35 + level * 0.08, 1.4);
-    const jumpWindow = Math.max(0.55, 1.15 - level * 0.04);
-    return { padCount, singleChance, sway, jumpWindow };
+    const padCount = Math.min(5 + level, 11);
+    const dangerChance = Math.min(0.2 + level * 0.07, 0.58);
+    const sway = Math.min(0.35 + level * 0.08, 1.35);
+    return { padCount, dangerChance, sway };
+  }
+
+  function makeDecorFlower(color) {
+    return {
+      color: color || pick(FLOWER_COLORS),
+      angle: rand(0, Math.PI * 2),
+      radius: rand(10, 16),
+      spin: rand(0.4, 1.4) * (Math.random() < 0.5 ? 1 : -1),
+      pulse: rand(0, Math.PI * 2),
+      scale: rand(0.85, 1.15),
+    };
   }
 
   function buildLevel(level) {
     const cfg = levelConfig(level);
     const pads = [];
-    const marginX = 36;
-    const topY = 70;
-    const bottomY = state.viewH - 90;
+    const marginX = 48;
+    const topY = 78;
+    const bottomY = state.viewH - 100;
     const span = bottomY - topY;
 
     for (let i = 0; i < cfg.padCount; i++) {
       const t = i / (cfg.padCount - 1);
       const y = bottomY - t * span;
-      const zig = (i % 2 === 0 ? -1 : 1) * rand(18, 70);
+      const zig = (i % 2 === 0 ? -1 : 1) * rand(24, 78);
       const x = state.viewW / 2 + zig * (0.55 + Math.min(level, 8) * 0.05);
       const clampedX = Math.max(marginX, Math.min(state.viewW - marginX, x));
       const isGoal = i === cfg.padCount - 1;
       const isStart = i === 0;
-      let flowerCount;
-      if (isStart || isGoal) {
-        flowerCount = 3;
-      } else if (Math.random() < cfg.singleChance) {
-        flowerCount = 1;
+      const isDanger = !isStart && !isGoal && Math.random() < cfg.dangerChance;
+
+      let flowers = [];
+      if (!isDanger) {
+        const count = isGoal ? 3 : 2 + Math.floor(Math.random() * 2);
+        for (let f = 0; f < count; f++) {
+          const flower = makeDecorFlower();
+          flower.angle = (Math.PI * 2 * f) / count + rand(-0.25, 0.25);
+          flower.radius = 12 + count;
+          flowers.push(flower);
+        }
       } else {
-        flowerCount = 2 + Math.floor(Math.random() * 3);
+        flowers = [makeDecorFlower(pick(["#ff6bb5", "#ff4757", "#ff9f43", "#a55eea"]))];
+        flowers[0].scale = 1.35;
+        flowers[0].radius = 0;
       }
-      const flowers = [];
-      for (let f = 0; f < flowerCount; f++) {
-        flowers.push({
-          color: pick(FLOWER_COLORS),
-          angle: (Math.PI * 2 * f) / flowerCount + rand(-0.2, 0.2),
-          radius: flowerCount === 1 ? 0 : 10 + flowerCount * 1.5,
-          spin: rand(0.8, 2.2) * (Math.random() < 0.5 ? 1 : -1),
-          pulse: rand(0, Math.PI * 2),
-        });
-      }
+
       pads.push({
         x: clampedX,
         y,
         baseX: clampedX,
-        r: isGoal ? 34 : 28,
+        r: isDanger ? 30 : isGoal ? 40 : 34,
         flowers,
-        swayAmp: isStart || isGoal ? 0 : rand(6, 14) * cfg.sway,
-        swaySpeed: rand(0.7, 1.6) * cfg.sway,
+        swayAmp: isStart || isGoal ? 0 : rand(5, 12) * cfg.sway,
+        swaySpeed: rand(0.7, 1.5) * cfg.sway,
         swayPhase: rand(0, Math.PI * 2),
         bobPhase: rand(0, Math.PI * 2),
         glowPhase: rand(0, Math.PI * 2),
+        notch: rand(0, Math.PI * 2),
         isGoal,
         isStart,
-        dangerous: flowerCount === 1,
+        dangerous: isDanger,
       });
     }
 
@@ -253,9 +275,8 @@
     state.frog = {
       padIndex: 0,
       x: pads[0].x,
-      y: pads[0].y - 18,
+      y: pads[0].y - 22,
       hop: 0,
-      blink: 0,
       leg: 0,
     };
     state.jump = null;
@@ -280,10 +301,11 @@
     }
   }
 
-  function showOverlay(title, text, btnLabel) {
+  function showOverlay(title, html, btnLabel, kind) {
     overlayTitle.textContent = title;
-    overlayText.textContent = text;
+    overlayText.innerHTML = html;
     overlayBtn.textContent = btnLabel;
+    state.overlayKind = kind || "help";
     overlay.classList.add("is-open");
   }
 
@@ -295,7 +317,7 @@
     const pad = state.pads[index];
     state.frog.padIndex = index;
     state.frog.x = pad.x;
-    state.frog.y = pad.y - 18;
+    state.frog.y = pad.y - 22;
     state.jump = null;
     sfxLand();
     flash();
@@ -307,15 +329,15 @@
 
     if (pad.dangerous) {
       state.onDangerPad = true;
-      state.escapeUntil = performance.now() + 1000;
+      state.escapeUntil = performance.now() + DANGER_SECONDS * 1000;
       sfxDanger();
       flash("danger");
     } else {
       state.onDangerPad = false;
       state.escapeUntil = 0;
-      state.score += pad.flowers.length;
+      state.score += Math.max(1, pad.flowers.length);
       sfxCoin();
-      if (pad.flowers.length >= 4) {
+      if (pad.flowers.length >= 3) {
         flash("jackpot");
         sfxJackpot();
         state.score += 5;
@@ -336,11 +358,11 @@
       from,
       to: targetIndex,
       t0: performance.now(),
-      dur: 320 + Math.abs(targetIndex - from) * 40,
+      dur: 300 + Math.abs(targetIndex - from) * 45,
       x0: start.x,
-      y0: start.y - 18,
+      y0: start.y - 22,
       x1: end.x,
-      y1: end.y - 18,
+      y1: end.y - 22,
     };
     state.onDangerPad = false;
     state.escapeUntil = 0;
@@ -363,8 +385,9 @@
     setTimeout(() => {
       showOverlay(
         "Splash!",
-        `The flower claimed you on level ${state.level}. Score: ${state.score}`,
-        "Try Again"
+        `<p>The floating flower claimed you on level ${state.level}.</p><p>Score: <strong>${state.score}</strong></p><p>Tap Try Again — no keyboard needed.</p>`,
+        "Try Again",
+        "dead"
       );
     }, 700);
   }
@@ -378,24 +401,26 @@
     playWinSong();
     flash("jackpot");
     showOverlay(
-      `Congratulations!`,
-      `You finished level ${state.level}! Keep hopping — it gets harder.`,
-      `Play Level ${state.level + 1}`
+      "Congratulations!",
+      `<p>You finished level <strong>${state.level}</strong>!</p><p>Confetti time — next level gets harder.</p>`,
+      `Play Level ${state.level + 1}`,
+      "win"
     );
   }
 
   function startGame(resetScore) {
-    ensureAudio();
-    if (state.audio && state.audio.state === "suspended") state.audio.resume();
+    resumeAudio();
     if (resetScore) {
       state.level = 1;
       state.score = 0;
     }
+    startPanel.classList.add("is-hidden");
     resizeCanvas();
     buildLevel(state.level);
     state.mode = "play";
     hideOverlay();
     chime([NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6], 0.08);
+    pond.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function nextLevel() {
@@ -424,45 +449,84 @@
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-
-    const sparkleN = 10;
-    for (let i = 0; i < sparkleN; i++) {
-      const sx = (Math.sin(t * 0.7 + i * 1.7) * 0.5 + 0.5) * w;
-      const sy = (Math.cos(t * 0.5 + i * 2.1) * 0.5 + 0.5) * h;
-      const a = 0.25 + 0.25 * Math.sin(t * 6 + i);
-      ctx.fillStyle = `rgba(255,255,255,${a})`;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 2 + (i % 3), 0, Math.PI * 2);
-      ctx.fill();
-    }
   }
 
-  function drawFlower(fx, fy, flower, t, dangerous) {
-    const pulse = 1 + Math.sin(t * 4 + flower.pulse) * 0.12;
-    const petals = 6;
-    const pr = 7 * pulse;
+  function drawRealFlower(fx, fy, flower, t, bigDanger) {
+    const pulse = 1 + Math.sin(t * 4 + flower.pulse) * 0.1;
+    const scale = (flower.scale || 1) * pulse * (bigDanger ? 1.25 : 1);
+    const petals = 8;
+    const petalLen = (bigDanger ? 18 : 12) * scale;
+    const petalW = (bigDanger ? 9 : 6) * scale;
+
     ctx.save();
     ctx.translate(fx, fy);
-    ctx.rotate(t * flower.spin * 0.4);
-    if (dangerous) {
+    ctx.rotate(t * flower.spin * 0.35);
+
+    if (bigDanger) {
       ctx.shadowColor = "#ff4757";
-      ctx.shadowBlur = 14 + Math.sin(t * 10) * 6;
+      ctx.shadowBlur = 18 + Math.sin(t * 10) * 8;
     } else {
       ctx.shadowColor = flower.color;
       ctx.shadowBlur = 10 + Math.sin(t * 5 + flower.pulse) * 4;
     }
+
     for (let i = 0; i < petals; i++) {
       const a = (Math.PI * 2 * i) / petals;
+      ctx.save();
+      ctx.rotate(a);
       ctx.beginPath();
-      ctx.ellipse(Math.cos(a) * 5, Math.sin(a) * 5, pr * 0.55, pr, a, 0, Math.PI * 2);
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(petalW, -petalLen * 0.45, 0, -petalLen);
+      ctx.quadraticCurveTo(-petalW, -petalLen * 0.45, 0, 0);
       ctx.fillStyle = flower.color;
       ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
     }
+
     ctx.beginPath();
-    ctx.arc(0, 0, 4 * pulse, 0, Math.PI * 2);
-    ctx.fillStyle = dangerous ? "#fff200" : "#fff8e7";
+    ctx.arc(0, 0, (bigDanger ? 7 : 5) * scale, 0, Math.PI * 2);
+    const center = ctx.createRadialGradient(0, 0, 1, 0, 0, 7 * scale);
+    center.addColorStop(0, "#fff8e7");
+    center.addColorStop(0.55, "#ffd700");
+    center.addColorStop(1, "#ff9f43");
+    ctx.fillStyle = center;
     ctx.fill();
+
+    if (bigDanger) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.font = `bold ${Math.round(11 * scale)}px Trebuchet MS, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowBlur = 0;
+      ctx.fillText("!", 0, 0);
+    }
+
     ctx.restore();
+  }
+
+  function drawLilyPadShape(x, y, r, notchAngle) {
+    const steps = 36;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const a = (Math.PI * 2 * i) / steps;
+      let radius = r;
+      const notchWidth = 0.38;
+      const da = Math.abs(((a - notchAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      if (da < notchWidth) {
+        const cut = 1 - da / notchWidth;
+        radius = r * (0.18 + 0.82 * (1 - cut * cut));
+      } else {
+        radius = r * (0.92 + 0.08 * Math.sin(a * 3));
+      }
+      const px = x + Math.cos(a) * radius;
+      const py = y + Math.sin(a) * radius * 0.72;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
   }
 
   function drawPad(pad, t) {
@@ -471,44 +535,83 @@
     const y = pad.y + bob;
     const glow = 0.5 + 0.5 * Math.sin(t * 3 + pad.glowPhase);
 
+    if (pad.dangerous) {
+      ctx.save();
+      ctx.shadowColor = "#ff4757";
+      ctx.shadowBlur = 16 + glow * 10;
+      drawRealFlower(x, y - 2, pad.flowers[0], t, true);
+      ctx.restore();
+
+      ctx.fillStyle = `rgba(255, 71, 87, ${0.55 + glow * 0.35})`;
+      ctx.font = "bold 13px Trebuchet MS, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("1.5s!", x, y + 28);
+      return;
+    }
+
     ctx.save();
-    ctx.shadowColor = pad.dangerous ? "#ff4757" : pad.isGoal ? "#ffd700" : "#7dffb0";
-    ctx.shadowBlur = 12 + glow * 14;
+    ctx.shadowColor = pad.isGoal ? "#ffd700" : "#7dffb0";
+    ctx.shadowBlur = 14 + glow * 12;
 
     ctx.beginPath();
-    ctx.ellipse(x, y + 4, pad.r * 1.05, pad.r * 0.55, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(15, 70, 110, 0.25)";
+    ctx.ellipse(x + 3, y + 8, pad.r * 1.05, pad.r * 0.42, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(15, 70, 110, 0.28)";
     ctx.shadowBlur = 0;
     ctx.fill();
 
-    ctx.shadowBlur = 12 + glow * 14;
-    ctx.beginPath();
-    ctx.ellipse(x, y, pad.r, pad.r * 0.62, 0, 0, Math.PI * 2);
-    const pg = ctx.createRadialGradient(x - 8, y - 6, 4, x, y, pad.r);
-    pg.addColorStop(0, "#4ad67a");
-    pg.addColorStop(0.55, "#2d8a4e");
-    pg.addColorStop(1, "#1f6b3a");
+    ctx.shadowBlur = 14 + glow * 12;
+    drawLilyPadShape(x, y, pad.r, pad.notch);
+    const pg = ctx.createRadialGradient(x - 10, y - 8, 4, x, y, pad.r);
+    pg.addColorStop(0, "#6ee7a0");
+    pg.addColorStop(0.4, "#2ecc71");
+    pg.addColorStop(0.75, "#1f9e4f");
+    pg.addColorStop(1, "#146b35");
     ctx.fillStyle = pg;
     ctx.fill();
 
-    ctx.beginPath();
-    ctx.ellipse(x, y, pad.r * 0.72, pad.r * 0.42, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255,255,255,${0.15 + glow * 0.2})`;
+    ctx.strokeStyle = "rgba(10, 70, 40, 0.55)";
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    if (pad.isGoal) {
-      ctx.fillStyle = `rgba(255, 215, 0, ${0.35 + glow * 0.35})`;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 1.5;
+    for (let v = 0; v < 5; v++) {
+      const a = pad.notch + Math.PI + ((v - 2) * 0.35);
       ctx.beginPath();
-      ctx.arc(x, y, 8 + Math.sin(t * 8) * 2, 0, Math.PI * 2);
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(
+        x + Math.cos(a) * pad.r * 0.35,
+        y + Math.sin(a) * pad.r * 0.25,
+        x + Math.cos(a) * pad.r * 0.78,
+        y + Math.sin(a) * pad.r * 0.55
+      );
+      ctx.stroke();
+    }
+
+    if (pad.isGoal) {
+      ctx.fillStyle = `rgba(255, 215, 0, ${0.4 + glow * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 10 + Math.sin(t * 8) * 2, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = "#fff8e7";
+      ctx.font = "bold 12px Trebuchet MS, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("FINISH", x, y + pad.r * 0.72 + 14);
+    }
+
+    if (pad.isStart) {
+      ctx.fillStyle = "rgba(255,248,231,0.9)";
+      ctx.font = "bold 12px Trebuchet MS, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("START", x, y + pad.r * 0.72 + 14);
     }
 
     pad.flowers.forEach((flower) => {
-      const ang = flower.angle + t * flower.spin * 0.15;
+      const ang = flower.angle + t * flower.spin * 0.12;
       const fx = x + Math.cos(ang) * flower.radius;
-      const fy = y - 4 + Math.sin(ang) * flower.radius * 0.45;
-      drawFlower(fx, fy, flower, t, pad.dangerous);
+      const fy = y - 6 + Math.sin(ang) * flower.radius * 0.4;
+      drawRealFlower(fx, fy, flower, t, false);
     });
 
     ctx.restore();
@@ -516,101 +619,144 @@
 
   function drawFrog(t) {
     const frog = state.frog;
+    if (!frog) return;
+
     let x = frog.x;
     let y = frog.y;
     let squash = 1;
     let stretch = 1;
+    let tilt = 0;
 
     if (state.jump) {
       const p = Math.min(1, (performance.now() - state.jump.t0) / state.jump.dur);
       const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
       x = state.jump.x0 + (state.jump.x1 - state.jump.x0) * ease;
-      const arc = Math.sin(Math.PI * p) * 70;
+      const arc = Math.sin(Math.PI * p) * 78;
       y = state.jump.y0 + (state.jump.y1 - state.jump.y0) * ease - arc;
-      stretch = 1 + Math.sin(Math.PI * p) * 0.25;
-      squash = 1 - Math.sin(Math.PI * p) * 0.15;
-      frog.leg = Math.sin(p * Math.PI * 2) * 0.4;
+      stretch = 1 + Math.sin(Math.PI * p) * 0.28;
+      squash = 1 - Math.sin(Math.PI * p) * 0.12;
+      tilt = (state.jump.x1 - state.jump.x0) * 0.004;
+      frog.leg = Math.sin(p * Math.PI * 2) * 0.5;
     } else if (state.falling) {
       const p = (performance.now() - state.falling.t0) / 700;
       x = state.falling.x + Math.sin(p * 20) * 8;
-      y = state.falling.y + p * p * 220;
-      stretch = 1.2;
-      squash = 0.7;
+      y = state.falling.y + p * p * 240;
+      stretch = 1.25;
+      squash = 0.65;
+      tilt = p * 1.2;
     } else {
       const pad = state.pads[frog.padIndex];
       if (pad) {
+        const bob = Math.sin(t * 2.2 + pad.bobPhase) * 3;
         x = pad.x;
-        y = pad.y - 18 + Math.sin(t * 2.2 + pad.bobPhase) * 3;
+        y = pad.y + bob - 22;
         frog.x = x;
         frog.y = y;
       }
-      frog.hop = Math.sin(t * 5) * 2;
+      frog.hop = Math.sin(t * 4.5) * 2.5;
       y += frog.hop;
-      frog.leg = Math.sin(t * 6) * 0.15;
+      frog.leg = Math.sin(t * 5) * 0.18;
     }
 
-    const blink = Math.sin(t * 3) > 0.92;
+    const blink = Math.sin(t * 2.8) > 0.93;
 
     ctx.save();
     ctx.translate(x, y);
+    ctx.rotate(tilt);
     ctx.scale(squash, stretch);
     ctx.shadowColor = "#7dffb0";
-    ctx.shadowBlur = 16 + Math.sin(t * 8) * 6;
+    ctx.shadowBlur = 18 + Math.sin(t * 7) * 6;
 
-    ctx.fillStyle = "#1e9e4f";
+    // back legs
+    ctx.fillStyle = "#148a3f";
     ctx.beginPath();
-    ctx.ellipse(-14, 10, 8, 5, -0.4 + frog.leg, 0, Math.PI * 2);
-    ctx.ellipse(14, 10, 8, 5, 0.4 - frog.leg, 0, Math.PI * 2);
+    ctx.ellipse(-20, 16, 12, 7, -0.55 + frog.leg, 0, Math.PI * 2);
+    ctx.ellipse(20, 16, 12, 7, 0.55 - frog.leg, 0, Math.PI * 2);
     ctx.fill();
 
+    // feet
     ctx.beginPath();
-    ctx.ellipse(0, 4, 18, 14, 0, 0, Math.PI * 2);
-    const body = ctx.createRadialGradient(-4, -2, 2, 0, 4, 18);
-    body.addColorStop(0, "#7dffb0");
-    body.addColorStop(0.45, "#2ecc71");
-    body.addColorStop(1, "#1e9e4f");
+    ctx.ellipse(-28, 20, 8, 4, -0.2, 0, Math.PI * 2);
+    ctx.ellipse(28, 20, 8, 4, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // body
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 24, 18, 0, 0, Math.PI * 2);
+    const body = ctx.createRadialGradient(-6, -2, 3, 0, 6, 24);
+    body.addColorStop(0, "#9dffc0");
+    body.addColorStop(0.4, "#2ecc71");
+    body.addColorStop(1, "#148a3f");
     ctx.fillStyle = body;
     ctx.fill();
 
+    // belly
     ctx.beginPath();
-    ctx.arc(-8, -10, 7, 0, Math.PI * 2);
-    ctx.arc(8, -10, 7, 0, Math.PI * 2);
+    ctx.ellipse(0, 10, 14, 10, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#d8ffe8";
+    ctx.fill();
+
+    // front arms
+    ctx.fillStyle = "#1e9e4f";
+    ctx.beginPath();
+    ctx.ellipse(-16, 12, 7, 4, 0.5, 0, Math.PI * 2);
+    ctx.ellipse(16, 12, 7, 4, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // head
+    ctx.beginPath();
+    ctx.ellipse(0, -10, 16, 13, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#2ecc71";
     ctx.fill();
 
+    // eye bumps
+    ctx.beginPath();
+    ctx.arc(-9, -20, 8, 0, Math.PI * 2);
+    ctx.arc(9, -20, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "#2ecc71";
+    ctx.fill();
+
+    // eye whites
     ctx.fillStyle = "#fff8e7";
     ctx.beginPath();
-    ctx.arc(-8, -11, 3.2, 0, Math.PI * 2);
-    ctx.arc(8, -11, 3.2, 0, Math.PI * 2);
+    ctx.arc(-9, -21, 4.5, 0, Math.PI * 2);
+    ctx.arc(9, -21, 4.5, 0, Math.PI * 2);
     ctx.fill();
 
     if (!blink) {
       ctx.fillStyle = "#0d3a5c";
       ctx.beginPath();
-      ctx.arc(-8, -11, 1.6, 0, Math.PI * 2);
-      ctx.arc(8, -11, 1.6, 0, Math.PI * 2);
+      ctx.arc(-9, -21, 2.2, 0, Math.PI * 2);
+      ctx.arc(9, -21, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(-8, -22, 0.9, 0, Math.PI * 2);
+      ctx.arc(10, -22, 0.9, 0, Math.PI * 2);
       ctx.fill();
     } else {
       ctx.strokeStyle = "#0d3a5c";
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(-11, -11);
-      ctx.lineTo(-5, -11);
-      ctx.moveTo(5, -11);
-      ctx.lineTo(11, -11);
+      ctx.moveTo(-13, -21);
+      ctx.lineTo(-5, -21);
+      ctx.moveTo(5, -21);
+      ctx.lineTo(13, -21);
       ctx.stroke();
     }
 
-    ctx.strokeStyle = "#1e9e4f";
-    ctx.lineWidth = 2;
+    // smile
+    ctx.strokeStyle = "#148a3f";
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(0, 6, 5, 0.15, Math.PI - 0.15);
+    ctx.arc(0, -6, 6, 0.2, Math.PI - 0.2);
     ctx.stroke();
 
-    if (Math.floor(t * 8) % 2 === 0) {
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
+    // cheek shine flicker
+    if (Math.floor(t * 6) % 2 === 0) {
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
       ctx.beginPath();
-      ctx.ellipse(-6, 0, 4, 2, -0.5, 0, Math.PI * 2);
+      ctx.ellipse(-8, 0, 5, 3, -0.4, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -628,17 +774,13 @@
   function updateJump() {
     if (!state.jump) return;
     const p = (performance.now() - state.jump.t0) / state.jump.dur;
-    if (p >= 1) {
-      landOnPad(state.jump.to);
-    }
+    if (p >= 1) landOnPad(state.jump.to);
   }
 
   function updateDanger() {
     if (state.mode !== "play" || !state.onDangerPad || state.jump) return;
     updateHud();
-    if (performance.now() >= state.escapeUntil) {
-      killFrog();
-    }
+    if (performance.now() >= state.escapeUntil) killFrog();
   }
 
   function hitTestPad(clientX, clientY) {
@@ -646,12 +788,13 @@
     const x = ((clientX - rect.left) / rect.width) * state.viewW;
     const y = ((clientY - rect.top) / rect.height) * state.viewH;
     let best = -1;
-    let bestDist = 48;
+    let bestDist = 56;
     state.pads.forEach((pad, i) => {
       const dx = pad.x - x;
       const dy = pad.y - y;
       const d = Math.hypot(dx, dy);
-      if (d < bestDist) {
+      const reach = pad.dangerous ? 52 : pad.r + 18;
+      if (d < reach && d < bestDist) {
         bestDist = d;
         best = i;
       }
@@ -668,11 +811,8 @@
   }
 
   function frame(ts) {
-    if (!state.lastTs) state.lastTs = ts;
-    state.lastTs = ts;
     const t = ts / 1000;
     state.anim = t;
-
     if (!state.viewW) resizeCanvas();
 
     updatePads(t);
@@ -686,31 +826,50 @@
     requestAnimationFrame(frame);
   }
 
-  overlayBtn.addEventListener("click", () => {
-    ensureAudio();
-    if (state.mode === "win") {
+  function openHelp() {
+    resumeAudio();
+    showOverlay("How to Play", HELP_HTML, "Got it", "help");
+  }
+
+  helpBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    openHelp();
+  });
+
+  startBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    startGame(true);
+  });
+
+  overlayBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    resumeAudio();
+    if (state.overlayKind === "win") {
       nextLevel();
-    } else {
+    } else if (state.overlayKind === "dead") {
       startGame(true);
+    } else {
+      hideOverlay();
     }
   });
 
   canvas.addEventListener("pointerdown", onPointer, { passive: false });
-  canvas.addEventListener("touchstart", onPointer, { passive: false });
 
   window.addEventListener("resize", () => {
+    const keepLevel = state.level;
+    const keepScore = state.score;
+    const keepPad = state.frog ? state.frog.padIndex : 0;
+    const keepMode = state.mode;
     resizeCanvas();
-    if (state.mode === "play" || state.mode === "win" || state.mode === "dead") {
-      const keepLevel = state.level;
-      const keepScore = state.score;
-      const keepPad = state.frog ? state.frog.padIndex : 0;
+    if (keepMode === "play" || keepMode === "win" || keepMode === "dead" || keepMode === "ready") {
       buildLevel(keepLevel);
       state.level = keepLevel;
       state.score = keepScore;
-      if (state.pads[keepPad]) {
-        state.frog.padIndex = keepPad;
-        state.frog.x = state.pads[keepPad].x;
-        state.frog.y = state.pads[keepPad].y - 18;
+      state.mode = keepMode === "ready" ? "ready" : keepMode;
+      if (state.pads[keepPad] && state.frog) {
+        state.frog.padIndex = Math.min(keepPad, state.pads.length - 1);
+        state.frog.x = state.pads[state.frog.padIndex].x;
+        state.frog.y = state.pads[state.frog.padIndex].y - 22;
       }
       updateHud();
     }
@@ -718,6 +877,6 @@
 
   resizeCanvas();
   buildLevel(1);
-  state.mode = "title";
+  state.mode = "ready";
   requestAnimationFrame(frame);
 })();
